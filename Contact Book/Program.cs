@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 
 class Program
 {
@@ -83,19 +84,19 @@ class Program
             return allContactsList.Where(c => c.FullName.Contains(searching_text) || c.PhoneNumber.Contains(searching_text) || c.Email.Contains(searching_text)).ToList();
         }
 
-        public bool EditContact(string searchingcontact, string editversion_name, string editversion_number, string editversion_email)
+        public bool EditContact(Contact needed_contact, string editversion_name, string editversion_number, string editversion_email)
         {
+            if (needed_contact == null) return false;
+
             var allContactsList = _repository.AllContacts();
-            var neededContact = allContactsList.FirstOrDefault(c => c.FullName == searchingcontact || c.PhoneNumber == searchingcontact || c.Email == searchingcontact);
 
-            if (neededContact == null)
-            {
-                return false;
-            }
+            var contact_to_edit = allContactsList.FirstOrDefault(c => c.PhoneNumber == needed_contact.PhoneNumber || c.Email == needed_contact.Email);
 
-            if (!string.IsNullOrWhiteSpace(editversion_name)) neededContact.FullName = editversion_name;
-            if (!string.IsNullOrWhiteSpace(editversion_number)) neededContact.PhoneNumber = editversion_number;
-            if (!string.IsNullOrWhiteSpace(editversion_email)) neededContact.Email = editversion_email;
+            if (contact_to_edit == null) return false;
+
+            if (!string.IsNullOrWhiteSpace(editversion_name)) contact_to_edit.FullName = editversion_name;
+            if (!string.IsNullOrWhiteSpace(editversion_number)) contact_to_edit.PhoneNumber = editversion_number;
+            if (!string.IsNullOrWhiteSpace(editversion_email)) contact_to_edit.Email = editversion_email;
 
             _repository.SaveContacts(allContactsList);
             return true;
@@ -122,6 +123,24 @@ class Program
         {
             return _repository.AllContacts().Any(c => c.PhoneNumber == phone);
         }
+
+        public bool PhoneValidation(string phone)
+        {
+            if (!string.IsNullOrWhiteSpace(phone) && phone.All(char.IsDigit))
+                return true;
+            else
+                return false;
+        }
+
+        public bool EmailValidation(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return false;
+
+            string model = @"^[^@\s]+@[^@\s]+\.[^@\s]+$";
+
+            return Regex.IsMatch(email, model, RegexOptions.IgnoreCase);
+        }
     }
 
     static void Main()
@@ -133,16 +152,16 @@ class Program
         bool t = true;
         while (t)
         {
-            Console.WriteLine("   Menu\n 1.Add contact\n " +
+            Console.WriteLine("-----Menu-----\n 1.Add contact\n " +
             "2.View all contacts\n 3.Search contact\n " +
             "4.Edit contact\n 5.Delete contact\n " +
-            "6.Export contacts to TXT\n 0.Exit");
+            "0.Exit");
 
             int operation;
             Console.Write("Write the number of your operation: ");
             while (!int.TryParse(Console.ReadLine(), out operation))
             {
-                Console.Write("Write the number from 0 to 6: ");
+                Console.Write("Write the number from 0 to 5: ");
             }
 
             switch (operation)
@@ -151,8 +170,18 @@ class Program
                     t = false;
                     break;
                 case 1:
+                    string fullname = "";
                     Console.Write("Write your full name: ");
-                    string fullname = Console.ReadLine();
+                    bool namechecking = true;
+
+                    while (namechecking)
+                    {
+                        fullname = Console.ReadLine();
+                        if (!string.IsNullOrWhiteSpace(fullname))
+                            namechecking = false;
+                        else
+                            Console.Write("Name can not be empty or null: ");
+                    }
 
                     string phonenumber = "";
                     Console.Write("Write your phone number: ");
@@ -161,10 +190,15 @@ class Program
                     {
                         phonenumber = Console.ReadLine();
 
-                        if (service.IsPhoneInUse(phonenumber))
-                            Console.Write("This phone number is already in use. Try another number: ");
+                        if (service.PhoneValidation(phonenumber))
+                        {
+                            if (service.IsPhoneInUse(phonenumber))
+                                Console.Write("This phone number is already in use. Try another number: ");
+                            else
+                                numberchecking = false;
+                        }
                         else
-                            numberchecking = false;
+                            Console.Write("Wrong input for phone number. Try again: ");
                     }
 
                     string email = "";
@@ -174,12 +208,10 @@ class Program
                     {
                         email = Console.ReadLine();
 
-                        if (!email.Contains("@"))
-                        {
-                            Console.Write("Your email must contain '@': ");
-                        }
-                        else
+                        if (service.EmailValidation(email))
                             emailchecking = false;
+                        else
+                            Console.Write("Wrong input for email. Try again: ");
                     }
 
                     Contact newcontact = new Contact
@@ -227,11 +259,31 @@ class Program
                     Console.Write("Which contact you want to edit? (Enter fullname/phonenumber/email.): ");
                     string searchingcontact = Console.ReadLine();
                     var result = service.SearchContact(searchingcontact);
+
                     if (!result.Any())
                     {
                         Console.WriteLine("Contact not found.");
                         break;
                     }
+                    else
+                    {
+                        int rank = 1;
+                        foreach (var contact in result)
+                        {
+                            Console.WriteLine($"{rank}. Full Name: {contact.FullName} | Phone: {contact.PhoneNumber} | Email: {contact.Email}");
+                            rank++;
+                        }
+                    }
+
+                    int correct_contact;
+                    Console.Write($"Choose the contact's number (Between 1 to {result.Count}): ");
+                    while (!int.TryParse(Console.ReadLine(), out correct_contact))
+                    {
+                        Console.Write("It must be an integer: ");
+                    }
+
+                    correct_contact--;
+                    var needed_contact = result[correct_contact];
 
                     string editversion_name = null;
                     string editversion_number = null;
@@ -242,7 +294,16 @@ class Program
                     if(answer1 == "Y" || answer1 == "y")
                     {
                         Console.Write("New Full Name: ");
-                        editversion_name = Console.ReadLine();
+                        bool name_checking = true;
+
+                        while (name_checking)
+                        {
+                            editversion_name = Console.ReadLine();
+                            if (!string.IsNullOrWhiteSpace(editversion_name))
+                                name_checking = false;
+                            else
+                                Console.Write("Name can not be empty or null: ");
+                        }
                     }
 
                     Console.Write("If you want to change phone number click Y: ");
@@ -254,13 +315,17 @@ class Program
                         while (number_checking)
                         {
                             editversion_number = Console.ReadLine();
-                            
-                            if (service.IsPhoneInUse(editversion_number))
-                                Console.Write("This phone number is already in use. Try another number: ");
-                            else
-                                number_checking = false;
-                        }
 
+                            if (service.PhoneValidation(editversion_number))
+                            {
+                                if (service.IsPhoneInUse(editversion_number))
+                                    Console.Write("This phone number is already in use. Try another number: ");
+                                else
+                                    number_checking = false;
+                            }
+                            else
+                                Console.Write("Wrong input for phone number. Try again: ");
+                        }
                     }
 
                     Console.Write("If you want to change email click Y: ");
@@ -273,15 +338,13 @@ class Program
                         {
                             editversion_email = Console.ReadLine();
 
-                            if (!editversion_email.Contains("@"))
-                            {
-                                Console.Write("Your email must contain '@': ");
-                            }
-                            else
+                            if (service.EmailValidation(editversion_email))
                                 email_checking = false;
+                            else
+                                Console.Write("Wrong input for email. Try again: ");
                         }
                     }
-                    bool editSuccessful = service.EditContact(searchingcontact, editversion_name, editversion_number, editversion_email);
+                    bool editSuccessful = service.EditContact(needed_contact, editversion_name, editversion_number, editversion_email);
 
                     if (editSuccessful)
                         Console.WriteLine("Contact updated and saved successfully!");
