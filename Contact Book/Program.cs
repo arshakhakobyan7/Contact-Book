@@ -206,76 +206,85 @@ namespace ContactBookApp
         private readonly JsonFileRepository _repository; 
         private readonly ContactDataRepository _fileRepository;
 
+        private List<Contact> _excelAllContacts;
+        private List<Contact> _jsonAllContacts;
+
         public ContactService(ExcelFileRepository excelRepository, JsonFileRepository repository, ContactDataRepository fileRepository) 
         { 
             _excelRepository = excelRepository;  
             _repository = repository; 
             _fileRepository = fileRepository;
+
+            _excelAllContacts = _excelRepository.AllContacts();
+            _jsonAllContacts = _repository.AllContacts();
         }
 
         public List<Contact> GetAll()
         {
-            return _excelRepository.AllContacts();
+            return _excelAllContacts;
         }
         public void AddContact(Contact newcontact, ContactData newContactData)
         {
-            var allContactsList = _repository.AllContacts();
-            var excel_allContactsList = _excelRepository.AllContacts();
             var allContactsData = _fileRepository.AllHistory();
 
-            excel_allContactsList.Add(newcontact);
-            allContactsList.Add(newcontact);
+            _excelAllContacts.Add(newcontact);
+            _jsonAllContacts.Add(newcontact);
             allContactsData.Add(newContactData);
 
-            _excelRepository.SaveContacts(allContactsList);
-            _repository.SaveContacts(allContactsList);
+            _excelRepository.SaveContacts(_excelAllContacts);
+            _repository.SaveContacts(_jsonAllContacts);
             _fileRepository.AppendHistory(newContactData);
         }
 
         public List<Contact> SearchContact(string searching_text)
         {
-            var allContactsList = _excelRepository.AllContacts();
-            return allContactsList.Where(c => c.FullName.Contains(searching_text) || c.PhoneNumber.Contains(searching_text) || c.Email.Contains(searching_text)).ToList();
+            return _excelAllContacts.Where(c => c.FullName.Contains(searching_text) || c.PhoneNumber.Contains(searching_text) || c.Email.Contains(searching_text)).ToList();
         }
 
         public bool EditContact(Contact needed_contact, string editversion_name, string editversion_number, string editversion_email)
         {
             if (needed_contact == null) return false;
 
-            var allContactsList = _excelRepository.AllContacts();
+            var contact_to_edit_excel = _excelAllContacts.FirstOrDefault(c => c.PhoneNumber == needed_contact.PhoneNumber || c.Email == needed_contact.Email);
+            var contact_to_edit_json = _jsonAllContacts.LastOrDefault(c => c.PhoneNumber == needed_contact.PhoneNumber || c.Email == needed_contact.Email);
 
-            var contact_to_edit = allContactsList.FirstOrDefault(c => c.PhoneNumber == needed_contact.PhoneNumber || c.Email == needed_contact.Email);
-
-            if (contact_to_edit == null) return false;
+            if (contact_to_edit_excel == null) return false;
 
             Contact originalContact = new Contact
             {
-                FullName = contact_to_edit.FullName,
-                PhoneNumber = contact_to_edit.PhoneNumber,
-                Email = contact_to_edit.Email
+                FullName = contact_to_edit_excel.FullName,
+                PhoneNumber = contact_to_edit_excel.PhoneNumber,
+                Email = contact_to_edit_excel.Email
             };
 
-            if (!string.IsNullOrWhiteSpace(editversion_name)) contact_to_edit.FullName = editversion_name;
-            if (!string.IsNullOrWhiteSpace(editversion_number)) contact_to_edit.PhoneNumber = editversion_number;
-            if (!string.IsNullOrWhiteSpace(editversion_email)) contact_to_edit.Email = editversion_email;
+            if (!string.IsNullOrWhiteSpace(editversion_name)) contact_to_edit_excel.FullName = editversion_name;
+            if (!string.IsNullOrWhiteSpace(editversion_number)) contact_to_edit_excel.PhoneNumber = editversion_number;
+            if (!string.IsNullOrWhiteSpace(editversion_email)) contact_to_edit_excel.Email = editversion_email;
+
+            if (contact_to_edit_json != null)
+            {
+                if (!string.IsNullOrWhiteSpace(editversion_name)) contact_to_edit_json.FullName = editversion_name;
+                if (!string.IsNullOrWhiteSpace(editversion_number)) contact_to_edit_json.PhoneNumber = editversion_number;
+                if (!string.IsNullOrWhiteSpace(editversion_email)) contact_to_edit_json.Email = editversion_email;
+            }
 
             ContactData contactData = new ContactData
             {
                 Action = "Edit",
                 OriginalContact = originalContact,
-                NewContact = contact_to_edit,
+                NewContact = contact_to_edit_excel,
                 TimeDetail = DateTime.Now,
             };
 
             _fileRepository.AppendHistory(contactData);
-            _excelRepository.SaveContacts(allContactsList);
+            _repository.SaveContacts(_jsonAllContacts);
+            _excelRepository.SaveContacts(_excelAllContacts);
             return true;
         }
 
         public bool DeleteContact(string searchingcontact)
         {
-            var allContactsList = _excelRepository.AllContacts();
-            var matches = allContactsList.Where(c => c.FullName == searchingcontact || c.PhoneNumber == searchingcontact || c.Email == searchingcontact).ToList();
+            var matches = _excelAllContacts.Where(c => c.FullName == searchingcontact || c.PhoneNumber == searchingcontact || c.Email == searchingcontact).ToList();
 
             if (matches.Count() == 0) return false;
             if (matches.Count() > 1) return false;
@@ -289,17 +298,17 @@ namespace ContactBookApp
                 TimeDetail= DateTime.Now
             };
 
-            allContactsList.Remove(neededContact);
+            _excelAllContacts.Remove(neededContact);
 
             _fileRepository.AppendHistory(contactData);
-            _excelRepository.SaveContacts(allContactsList);
+            _excelRepository.SaveContacts(_excelAllContacts);
 
             return true;
         }
 
         public bool IsPhoneInUse(string phone)
         {
-            return _excelRepository.AllContacts().Any(c => c.PhoneNumber == phone);
+            return _excelAllContacts.Any(c => c.PhoneNumber == phone);
         }
 
         public bool PhoneValidation(string phone)
